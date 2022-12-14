@@ -21,9 +21,7 @@ export const sky = (function() {
           textureWidth: 2048,
           textureHeight: 2048,
           waterNormals: new THREE.TextureLoader().load( 'resources/waternormals.jpg', function ( texture ) {
-
             texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-
           } ),
           alpha: 0.5,
           sunDirection: new THREE.Vector3(1, 0, 0),
@@ -33,14 +31,14 @@ export const sky = (function() {
           fog: undefined
         }
       );
-      this._water.rotation.x = - Math.PI / 2;
-      this._water.position.y = 4;
+      // this._water.rotation.x = - Math.PI / 2;
+      // this._water.position.y = 4;
 
       this._sky = new Sky();
       this._sky.scale.setScalar(10000);
 
       this._group = new THREE.Group();
-      this._group.add(this._water);
+      //this._group.add(this._water);
       this._group.add(this._sky);
 
       params.scene.add(this._group);

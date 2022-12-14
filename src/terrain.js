@@ -5,10 +5,31 @@ import {math} from './math.js';
 import {noise} from './noise.js';
 import {quadtree} from './quadtree.js';
 import {spline} from './spline.js';
+import {terrain_chunk} from './terrain-chunk.js';
+import {terrain_shader} from './terrain-shader.js';
+import {textures} from './textures.js';
 import {utils} from './utils.js';
 
-
 export const terrain = (function() {
+
+  const _WHITE = new THREE.Color(0x808080);
+
+  const _DEEP_OCEAN = new THREE.Color(0x20020FF);
+  const _SHALLOW_OCEAN = new THREE.Color(0x8080FF);
+  const _BEACH = new THREE.Color(0xd9d592);
+  const _SNOW = new THREE.Color(0xFFFFFF);
+  const _ApplyWeightsOREST_TROPICAL = new THREE.Color(0x4f9f0f);
+  const _ApplyWeightsOREST_TEMPERATE = new THREE.Color(0x2b960e);
+  const _ApplyWeightsOREST_BOREAL = new THREE.Color(0x29c100);
+  
+  const _GREEN = new THREE.Color(0x80FF80);
+  const _RED = new THREE.Color(0xFF8080);
+  const _BLACK = new THREE.Color(0x000000);
+  
+  const _MIN_CELL_SIZE = 500;
+  const _MIN_CELL_RESOLUTION = 64;
+  const _PLANET_RADIUS = 4000;
+
 
   class HeightGenerator {
     constructor(generator, position, minRadius, maxRadius) {
@@ -17,13 +38,8 @@ export const terrain = (function() {
       this._generator = generator;
     }
   
-    Get(x, y) {
-      const distance = this._position.distanceTo(new THREE.Vector2(x, y));
-      let normalization = 1.0 - math.sat(
-          (distance - this._radius[0]) / (this._radius[1] - this._radius[0]));
-      normalization = normalization * normalization * (3 - 2 * normalization);
-  
-      return [this._generator.Get(x, y), normalization];
+    Get(x, y, z) {
+      return [this._generator.Get(x, y, z), 1];
     }
   }
   
@@ -35,66 +51,7 @@ export const terrain = (function() {
       return [50, 1];
     }
   }
-  
-  
-  class Heightmap {
-    constructor(params, img) {
-      this._params = params;
-      this._data = graphics.GetImageData(img);
-    }
-  
-    Get(x, y) {
-      const _GetPixelAsFloat = (x, y) => {
-        const position = (x + this._data.width * y) * 4;
-        const data = this._data.data;
-        return data[position] / 255.0;
-      }
-  
-      // Bilinear filter
-      const offset = new THREE.Vector2(-250, -250);
-      const dimensions = new THREE.Vector2(500, 500);
-  
-      const xf = 1.0 - math.sat((x - offset.x) / dimensions.x);
-      const yf = math.sat((y - offset.y) / dimensions.y);
-      const w = this._data.width - 1;
-      const h = this._data.height - 1;
-  
-      const x1 = Math.floor(xf * w);
-      const y1 = Math.floor(yf * h);
-      const x2 = math.clamp(x1 + 1, 0, w);
-      const y2 = math.clamp(y1 + 1, 0, h);
-  
-      const xp = xf * w - x1;
-      const yp = yf * h - y1;
-  
-      const p11 = _GetPixelAsFloat(x1, y1);
-      const p21 = _GetPixelAsFloat(x2, y1);
-      const p12 = _GetPixelAsFloat(x1, y2);
-      const p22 = _GetPixelAsFloat(x2, y2);
-  
-      const px1 = math.lerp(xp, p11, p21);
-      const px2 = math.lerp(xp, p12, p22);
-  
-      return math.lerp(yp, px1, px2) * this._params.height;
-    }
-  }
-  
-  const _WHITE = new THREE.Color(0x808080);
-  const _OCEAN = new THREE.Color(0xd9d592);
-  const _BEACH = new THREE.Color(0xd9d592);
-  const _SNOW = new THREE.Color(0xFFFFFF);
-  const _FOREST_TROPICAL = new THREE.Color(0x4f9f0f);
-  const _FOREST_TEMPERATE = new THREE.Color(0x2b960e);
-  const _FOREST_BOREAL = new THREE.Color(0x29c100);
-  
-  const _GREEN = new THREE.Color(0x80FF80);
-  const _RED = new THREE.Color(0xFF8080);
-  const _BLACK = new THREE.Color(0x000000);
-  
-  const _MIN_CELL_SIZE = 500;
-  const _FIXED_GRID_SIZE = 10;
-  const _MIN_CELL_RESOLUTION = 64;
-  
+   
   
   // Cross-blended Hypsometric Tints
   // http://www.shadedrelief.com/hypso/hypso.html
@@ -103,40 +60,173 @@ export const terrain = (function() {
       const _colourLerp = (t, p0, p1) => {
         const c = p0.clone();
   
-        return c.lerpHSL(p1, t);
+        return c.lerp(p1, t);
       };
       this._colourSpline = [
         new spline.LinearSpline(_colourLerp),
         new spline.LinearSpline(_colourLerp)
       ];
+
       // Arid
       this._colourSpline[0].AddPoint(0.0, new THREE.Color(0xb7a67d));
       this._colourSpline[0].AddPoint(0.5, new THREE.Color(0xf1e1bc));
       this._colourSpline[0].AddPoint(1.0, _SNOW);
   
       // Humid
-      this._colourSpline[1].AddPoint(0.0, _FOREST_BOREAL);
+      this._colourSpline[1].AddPoint(0.0, _ApplyWeightsOREST_BOREAL);
       this._colourSpline[1].AddPoint(0.5, new THREE.Color(0xcee59c));
       this._colourSpline[1].AddPoint(1.0, _SNOW);
-  
+
+      this._oceanSpline = new spline.LinearSpline(_colourLerp);
+      this._oceanSpline.AddPoint(0, _DEEP_OCEAN);
+      this._oceanSpline.AddPoint(0.03, _SHALLOW_OCEAN);
+      this._oceanSpline.AddPoint(0.05, _SHALLOW_OCEAN);
+
       this._params = params;
     }
   
     Get(x, y, z) {
-      const m = this._params.biomeGenerator.Get(x, z);
-      const h = y / 100.0;
+      const m = this._params.biomeGenerator.Get(x, y, z);
+      const h = z / 100.0;
   
       if (h < 0.05) {
-        return _OCEAN;
+        return this._oceanSpline.Get(h);
       }
+
+      const c1 = this._colourSpline[0].Get(h);
+      const c2 = this._colourSpline[1].Get(h);
+  
+      return c1.lerp(c2, m);
+    }
+  }
+
+
+  class TextureSplatter {
+    constructor(params) {
+      const _colourLerp = (t, p0, p1) => {
+        const c = p0.clone();
+  
+        return c.lerp(p1, t);
+      };
+      this._colourSpline = [
+        new spline.LinearSpline(_colourLerp),
+        new spline.LinearSpline(_colourLerp)
+      ];
+
+      // Arid
+      this._colourSpline[0].AddPoint(0.0, new THREE.Color(0xb7a67d));
+      this._colourSpline[0].AddPoint(0.5, new THREE.Color(0xf1e1bc));
+      this._colourSpline[0].AddPoint(1.0, _SNOW);
+  
+      // Humid
+      this._colourSpline[1].AddPoint(0.0, _ApplyWeightsOREST_BOREAL);
+      this._colourSpline[1].AddPoint(0.5, new THREE.Color(0xcee59c));
+      this._colourSpline[1].AddPoint(1.0, _SNOW);
+
+      this._oceanSpline = new spline.LinearSpline(_colourLerp);
+      this._oceanSpline.AddPoint(0, _DEEP_OCEAN);
+      this._oceanSpline.AddPoint(0.03, _SHALLOW_OCEAN);
+      this._oceanSpline.AddPoint(0.05, _SHALLOW_OCEAN);
+
+      this._params = params;
+    }
+  
+    _BaseColour(x, y, z) {
+      const m = this._params.biomeGenerator.Get(x, y, z);
+      const h = math.sat(z / 100.0);
   
       const c1 = this._colourSpline[0].Get(h);
       const c2 = this._colourSpline[1].Get(h);
   
-      return c1.lerpHSL(c2, m);
+      let c = c1.lerp(c2, m);
+
+      if (h < 0.1) {
+        c = c.lerp(new THREE.Color(0x54380e), 1.0 - math.sat(h / 0.05));
+      }
+      return c;      
+    }
+
+    _Colour(x, y, z) {
+      const c = this._BaseColour(x, y, z);
+      const r = this._params.colourNoise.Get(x, y, z) * 2.0 - 1.0;
+
+      c.offsetHSL(0.0, 0.0, r * 0.01);
+      return c;
+    }
+
+    _GetTextureWeights(p, n, up) {
+      const m = this._params.biomeGenerator.Get(p.x, p.y, p.z);
+      const h = p.z / 100.0;
+
+      const types = {
+        dirt: {index: 0, strength: 0.0},
+        grass: {index: 1, strength: 0.0},
+        gravel: {index: 2, strength: 0.0},
+        rock: {index: 3, strength: 0.0},
+        snow: {index: 4, strength: 0.0},
+        snowrock: {index: 5, strength: 0.0},
+        cobble: {index: 6, strength: 0.0},
+        sandyrock: {index: 7, strength: 0.0},
+      };
+
+      function _ApplyWeights(dst, v, m) {
+        for (let k in types) {
+          types[k].strength *= m;
+        }
+        types[dst].strength = v;
+      };
+
+      types.grass.strength = 1.0;
+      _ApplyWeights('gravel', 1.0 - m, m);
+
+      if (h < 0.2) {
+        const s = 1.0 - math.sat((h - 0.1) / 0.05);
+        _ApplyWeights('cobble', s, 1.0 - s);
+
+        if (h < 0.1) {
+          const s = 1.0 - math.sat((h - 0.05) / 0.05);
+          _ApplyWeights('sandyrock', s, 1.0 - s);
+        }
+      } else {
+        if (h > 0.125) {
+          const s = (math.sat((h - 0.125) / 1.25));
+          _ApplyWeights('rock', s, 1.0 - s);
+        }
+
+        if (h > 1.5) {
+          const s = math.sat((h - 0.75) / 2.0);
+          _ApplyWeights('snow', s, 1.0 - s);
+        }
+      }
+
+      // In case nothing gets set.
+      types.dirt.strength = 0.01;
+
+      let total = 0.0;
+      for (let k in types) {
+        total += types[k].strength;
+      }
+      if (total < 0.01) {
+        const a = 0;
+      }
+      const normalization = 1.0 / total;
+
+      for (let k in types) {
+        types[k].strength / normalization;
+      }
+
+      return types;
+    }
+
+    GetColour(position) {
+      return this._Colour(position.x, position.y, position.z);
+    }
+
+    GetSplat(position, normal, up) {
+      return this._GetTextureWeights(position, normal, up);
     }
   }
-  
+
   
   class FixedColourGenerator {
     constructor(params) {
@@ -148,96 +238,7 @@ export const terrain = (function() {
     }
   }
   
-
-  class TerrainChunk {
-    constructor(params) {
-      this._params = params;
-      this._Init(params);
-    }
-    
-    Destroy() {
-      this._params.group.remove(this._plane);
-    }
-
-    Hide() {
-      this._plane.visible = false;
-    }
-
-    Show() {
-      this._plane.visible = true;
-    }
-
-    _Init(params) {
-      const size = new THREE.Vector3(params.width, 0, params.width);
-
-      this._plane = new THREE.Mesh(
-          new THREE.PlaneGeometry(size.x, size.z, params.resolution, params.resolution),
-          params.material);
-      this._plane.castShadow = false;
-      this._plane.receiveShadow = true;
-      this._plane.rotation.x = -Math.PI / 2;
-      this._params.group.add(this._plane);
-    }
-
-    _GenerateHeight(v) {
-      const offset = this._params.offset;
-      const heightPairs = [];
-      let normalization = 0;
-      let z = 0;
-      for (let gen of this._params.heightGenerators) {
-        heightPairs.push(gen.Get(v.x + offset.x, -v.y + offset.y));
-        normalization += heightPairs[heightPairs.length-1][1];
-      }
-
-      if (normalization > 0) {
-        for (let h of heightPairs) {
-          z += h[0] * h[1] / normalization;
-        }
-      }
-
-      return z;
-    }
-
-    *_Rebuild() {
-      const NUM_STEPS = 2000;
-      const colours = [];
-      const offset = this._params.offset;
-      let count = 0;
-
-      for (let v of this._plane.geometry.vertices) {
-        v.z = this._GenerateHeight(v);
-        colours.push(this._params.colourGenerator.Get(v.x + offset.x, v.z, -v.y + offset.y));
-
-        count++;
-        if (count > NUM_STEPS) {
-          count = 0;
-          yield;
-        }
-      }
-
-      for (let f of this._plane.geometry.faces) {
-        const vs = [f.a, f.b, f.c];
-
-        const vertexColours = [];
-        for (let v of vs) {
-          vertexColours.push(colours[v]);
-        }
-        f.vertexColors = vertexColours;
-
-        count++;
-        if (count > NUM_STEPS) {
-          count = 0;
-          yield;
-        }
-      }
-
-      yield;
-      this._plane.geometry.elementsNeedUpdate = true;
-      this._plane.geometry.verticesNeedUpdate = true;
-      this._plane.geometry.computeVertexNormals();
-      this._plane.position.set(offset.x, 0, offset.y);
-    }
-  }
+  
 
   class TerrainChunkRebuilder {
     constructor(params) {
@@ -258,7 +259,7 @@ export const terrain = (function() {
         c = this._pool[w].pop();
         c._params = params;
       } else {
-        c = new TerrainChunk(params);
+        c = new terrain_chunk.TerrainChunk(params);
       }
 
       c.Hide();
@@ -274,8 +275,7 @@ export const terrain = (function() {
           this._pool[c.chunk._params.width] = [];
         }
 
-        c.chunk.Hide();
-        this._pool[c.chunk._params.width].push(c.chunk);
+        c.chunk.Destroy();
       }
     }
 
@@ -287,26 +287,15 @@ export const terrain = (function() {
     }
 
     get Busy() {
-      return this._active;
+      return this._active || this._queued.length > 0;
     }
 
-    Update2() {
-      for (let b of this._queued) {
-        b._Rebuild().next();
-        this._new.push(b);
-      }
-      this._queued = [];
-
-      if (this._active) {
+    Rebuild(chunks) {
+      if (this.Busy) {
         return;
       }
-
-      if (!this._queued.length) {
-        this._RecycleChunks(this._old);
-        for (let b of this._new) {
-          b.Show();
-        }
-        this._Reset();
+      for (let k in chunks) {
+        this._queued.push(chunks[k].chunk);
       }
     }
 
@@ -346,13 +335,66 @@ export const terrain = (function() {
     _Init(params) {
       this._params = params;
 
+      const loader = new THREE.TextureLoader();
+
+      const noiseTexture = loader.load('./resources/simplex-noise.png');
+      noiseTexture.wrapS = THREE.RepeatWrapping;
+      noiseTexture.wrapT = THREE.RepeatWrapping;
+
+      const diffuse = new textures.TextureAtlas(params);
+      diffuse.Load('diffuse', [
+        './resources/dirt_01_diffuse-1024.png',
+        './resources/grass1-albedo3-1024.png',
+        './resources/sandyground-albedo-1024.png',
+        './resources/worn-bumpy-rock-albedo-1024.png',
+        './resources/rock-snow-ice-albedo-1024.png',
+        './resources/snow-packed-albedo-1024.png',
+        './resources/rough-wet-cobble-albedo-1024.png',
+        './resources/sandy-rocks1-albedo-1024.png',
+      ]);
+      diffuse.onLoad = () => {     
+        this._material.uniforms.diffuseMap.value = diffuse.Info['diffuse'].atlas;
+      };
+
+      const normal = new textures.TextureAtlas(params);
+      normal.Load('normal', [
+        './resources/dirt_01_normal-1024.jpg',
+        './resources/grass1-normal-1024.jpg',
+        './resources/sandyground-normal-1024.jpg',
+        './resources/worn-bumpy-rock-normal-1024.jpg',
+        './resources/rock-snow-ice-normal-1024.jpg',
+        './resources/snow-packed-normal-1024.jpg',
+        './resources/rough-wet-cobble-normal-1024.jpg',
+        './resources/sandy-rocks1-normal-1024.jpg',
+      ]);
+      normal.onLoad = () => {     
+        this._material.uniforms.normalMap.value = normal.Info['normal'].atlas;
+      };
+
       this._material = new THREE.MeshStandardMaterial({
         wireframe: false,
         wireframeLinewidth: 1,
         color: 0xFFFFFF,
         side: THREE.FrontSide,
         vertexColors: THREE.VertexColors,
+        // normalMap: texture,
       });
+
+      this._material = new THREE.RawShaderMaterial({
+        uniforms: {
+          diffuseMap: {
+          },
+          normalMap: {
+          },
+          noiseMap: {
+            value: noiseTexture
+          },
+        },
+        vertexShader: terrain_shader.VS,
+        fragmentShader: terrain_shader.PS,
+        side: THREE.FrontSide
+      });
+
       this._builder = new TerrainChunkRebuilder();
 
       this._InitNoise(params);
@@ -362,25 +404,20 @@ export const terrain = (function() {
 
     _InitNoise(params) {
       params.guiParams.noise = {
-        octaves: 6,
-        persistence: 0.707,
-        lacunarity: 1.8,
-        exponentiation: 4.5,
-        height: 300.0,
-        scale: 1100.0,
-        noiseType: 'simplex',
+        octaves: 10,
+        persistence: 0.5,
+        lacunarity: 1.6,
+        exponentiation: 7.5,
+        height: 900.0,
+        scale: 1800.0,
         seed: 1
       };
 
       const onNoiseChanged = () => {
-        for (let k in this._chunks) {
-          this._chunks[k].chunk.Rebuild();
-        }
+        this._builder.Rebuild(this._chunks);
       };
 
       const noiseRollup = params.gui.addFolder('Terrain.Noise');
-      noiseRollup.add(params.guiParams.noise, "noiseType", ['simplex', 'perlin', 'rand']).onChange(
-          onNoiseChanged);
       noiseRollup.add(params.guiParams.noise, "scale", 32.0, 4096.0).onChange(
           onNoiseChanged);
       noiseRollup.add(params.guiParams.noise, "octaves", 1, 20, 1).onChange(
@@ -391,7 +428,7 @@ export const terrain = (function() {
           onNoiseChanged);
       noiseRollup.add(params.guiParams.noise, "exponentiation", 0.1, 10.0).onChange(
           onNoiseChanged);
-      noiseRollup.add(params.guiParams.noise, "height", 0, 512).onChange(
+      noiseRollup.add(params.guiParams.noise, "height", 0, 20000).onChange(
           onNoiseChanged);
 
       this._noise = new noise.Noise(params.guiParams.noise);
@@ -410,18 +447,15 @@ export const terrain = (function() {
         octaves: 2,
         persistence: 0.5,
         lacunarity: 2.0,
-        exponentiation: 3.9,
         scale: 2048.0,
         noiseType: 'simplex',
         seed: 2,
         exponentiation: 1,
-        height: 1
+        height: 1.0
       };
 
       const onNoiseChanged = () => {
-        for (let k in this._chunks) {
-          this._chunks[k].chunk.Rebuild();
-        }
+        this._builder.Rebuild(this._chunks);
       };
 
       const noiseRollup = params.gui.addFolder('Terrain.Biomes');
@@ -437,6 +471,18 @@ export const terrain = (function() {
           onNoiseChanged);
 
       this._biomes = new noise.Noise(params.guiParams.biomes);
+
+      const colourParams = {
+        octaves: 1,
+        persistence: 0.5,
+        lacunarity: 2.0,
+        exponentiation: 1.0,
+        scale: 256.0,
+        noiseType: 'simplex',
+        seed: 2,
+        height: 1.0,
+      };
+      this._colourNoise = new noise.Noise(colourParams);
     }
 
     _InitTerrain(params) {
@@ -444,8 +490,8 @@ export const terrain = (function() {
         wireframe: false,
       };
 
-      this._group = new THREE.Group()
-      params.scene.add(this._group);
+      this._groups = [...new Array(6)].map(_ => new THREE.Group());
+      params.scene.add(...this._groups);
 
       const terrainRollup = params.gui.addFolder('Terrain');
       terrainRollup.add(params.guiParams.terrain, "wireframe").onChange(() => {
@@ -466,15 +512,16 @@ export const terrain = (function() {
       return [x, z];
     }
 
-    _CreateTerrainChunk(offset, width) {
+    _CreateTerrainChunk(group, offset, width, resolution) {
       const params = {
-        group: this._group,
+        group: group,
         material: this._material,
         width: width,
-        offset: new THREE.Vector3(offset.x, offset.y, 0),
-        resolution: _MIN_CELL_RESOLUTION,
+        offset: offset,
+        radius: _PLANET_RADIUS,
+        resolution: resolution,
         biomeGenerator: this._biomes,
-        colourGenerator: new HyposemetricTints({biomeGenerator: this._biomes}),
+        colourGenerator: new TextureSplatter({biomeGenerator: this._biomes, colourNoise: this._colourNoise}),
         heightGenerators: [new HeightGenerator(this._noise, offset, 100000, 100000 + 1)],
       };
 
@@ -490,32 +537,38 @@ export const terrain = (function() {
 
     _UpdateVisibleChunks_Quadtree() {
       function _Key(c) {
-        return c.position[0] + '/' + c.position[1] + ' [' + c.dimensions[0] + ']';
+        return c.position[0] + '/' + c.position[1] + ' [' + c.size + ']' + ' [' + c.index + ']';
       }
 
-      const q = new quadtree.QuadTree({
-        min: new THREE.Vector2(-32000, -32000),
-        max: new THREE.Vector2(32000, 32000),
+      const q = new quadtree.CubeQuadTree({
+        radius: _PLANET_RADIUS,
+        min_node_size: _MIN_CELL_SIZE,
       });
       q.Insert(this._params.camera.position);
 
-      const children = q.GetChildren();
+      const sides = q.GetChildren();
 
       let newTerrainChunks = {};
-      const center = new THREE.Vector2();
-      const dimensions = new THREE.Vector2();
-      for (let c of children) {
-        c.bounds.getCenter(center);
-        c.bounds.getSize(dimensions);
-
-        const child = {
-          position: [center.x, center.y],
-          bounds: c.bounds,
-          dimensions: [dimensions.x, dimensions.y],
-        };
-
-        const k = _Key(child);
-        newTerrainChunks[k] = child;
+      const center = new THREE.Vector3();
+      const dimensions = new THREE.Vector3();
+      for (let i = 0; i < sides.length; i++) {
+        this._groups[i].matrix = sides[i].transform;
+        this._groups[i].matrixAutoUpdate = false;
+        for (let c of sides[i].children) {
+          c.bounds.getCenter(center);
+          c.bounds.getSize(dimensions);
+  
+          const child = {
+            index: i,
+            group: this._groups[i],
+            position: [center.x, center.y, center.z],
+            bounds: c.bounds,
+            size: dimensions.x,
+          };
+  
+          const k = _Key(child);
+          newTerrainChunks[k] = child;
+        }
       }
 
       const intersection = utils.DictIntersection(this._chunks, newTerrainChunks);
@@ -527,74 +580,17 @@ export const terrain = (function() {
       newTerrainChunks = intersection;
 
       for (let k in difference) {
-        const [xp, zp] = difference[k].position;
+        const [xp, yp, zp] = difference[k].position;
 
-        const offset = new THREE.Vector2(xp, zp);
+        const offset = new THREE.Vector3(xp, yp, zp);
         newTerrainChunks[k] = {
           position: [xp, zp],
-          chunk: this._CreateTerrainChunk(offset, difference[k].dimensions[0]),
+          chunk: this._CreateTerrainChunk(
+              difference[k].group, offset, difference[k].size, _MIN_CELL_RESOLUTION),
         };
       }
 
       this._chunks = newTerrainChunks;
-    }
-
-    _UpdateVisibleChunks_FixedGrid() {
-      function _Key(xc, zc) {
-        return xc + '/' + zc;
-      }
-
-      const [xc, zc] = this._CellIndex(this._params.camera.position);
-
-      const keys = {};
-
-      for (let x = -_FIXED_GRID_SIZE; x <= _FIXED_GRID_SIZE; x++) {
-        for (let z = -_FIXED_GRID_SIZE; z <= _FIXED_GRID_SIZE; z++) {
-          const k = _Key(x + xc, z + zc);
-          keys[k] = {
-            position: [x + xc, z + zc]
-          };
-        }
-      }
-      
-      const difference = utils.DictDifference(keys, this._chunks);
-      const recycle = Object.values(utils.DictDifference(this._chunks, keys));
-
-      for (let k in difference) {
-        if (k in this._chunks) {
-          continue;
-        }
-
-        const [xp, zp] = difference[k].position;
-
-        const offset = new THREE.Vector2(xp * _MIN_CELL_SIZE, zp * _MIN_CELL_SIZE);
-        this._chunks[k] = {
-          position: [xc, zc],
-          chunk: this._CreateTerrainChunk(offset, _MIN_CELL_SIZE),
-        };
-      }
-    }
-
-    _UpdateVisibleChunks_Single() {
-      function _Key(xc, zc) {
-        return xc + '/' + zc;
-      }
-
-      // Check the camera's position.
-      const [xc, zc] = this._CellIndex(this._params.camera.position);
-      const newChunkKey = _Key(xc, zc);
-
-      // We're still in the bounds of the previous chunk of terrain.
-      if (newChunkKey in this._chunks) {
-        return;
-      }
-
-      // Create a new chunk of terrain.
-      const offset = new THREE.Vector2(xc * _MIN_CELL_SIZE, zc * _MIN_CELL_SIZE);
-      this._chunks[newChunkKey] = {
-        position: [xc, zc],
-        chunk: this._CreateTerrainChunk(offset, _MIN_CELL_SIZE),
-      };
     }
   }
 
