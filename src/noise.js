@@ -27,14 +27,15 @@ export const noise = (function() {
       let frequency = 1.0;
       let normalization = 0;
       let total = 0;
+      //fractional brownian motion
       for (let o = 0; o < this._params.octaves; o++) {
         const noiseValue = noiseFunc.noise3D(
-          xs * frequency, ys * frequency, zs * frequency) * 0.5 + 0.5;
+          xs * frequency, ys * frequency, zs * frequency) * 0.5 + 0.5; //setiap di loop, ditambahkan layer noise, setiap loop kontribusi atau layer yang ditambahkan mengecil
 
         total += noiseValue * amplitude;
         normalization += amplitude;
-        amplitude *= G;
-        frequency *= this._params.lacunarity;
+        amplitude *= G; //mengurangi amplitudo
+        frequency *= this._params.lacunarity; //membesarkan frekuensi, noise berubah lebih cepat, tetapi efek makin kecil
       }
       total /= normalization;
       return Math.pow(

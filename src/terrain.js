@@ -343,14 +343,14 @@ export const terrain = (function() {
 
       const diffuse = new textures.TextureAtlas(params);
       diffuse.Load('diffuse', [
-        './resources/dirt_01_diffuse-1024.png',
-        './resources/grass1-albedo3-1024.png',
-        './resources/sandyground-albedo-1024.png',
-        './resources/worn-bumpy-rock-albedo-1024.png',
+        './resources/dirt_01_diffuse-10241.png',
+        './resources/grass1-albedo3-10243.png',
+        './resources/sandyground-albedo-10242.png',
+        './resources/worn-bumpy-rock-albedo-10241.png',
         './resources/rock-snow-ice-albedo-1024.png',
         './resources/snow-packed-albedo-1024.png',
-        './resources/rough-wet-cobble-albedo-1024.png',
-        './resources/sandy-rocks1-albedo-1024.png',
+        './resources/rough-wet-cobble-albedo-10241.png',
+        './resources/sandy-rocks1-albedo-10242.png',
       ]);
       diffuse.onLoad = () => {     
         this._material.uniforms.diffuseMap.value = diffuse.Info['diffuse'].atlas;
@@ -404,12 +404,12 @@ export const terrain = (function() {
 
     _InitNoise(params) {
       params.guiParams.noise = {
-        octaves: 10,
+        octaves: 14,
         persistence: 0.5,
         lacunarity: 1.6,
-        exponentiation: 7.5,
-        height: 900.0,
-        scale: 1800.0,
+        exponentiation: 8,
+        height: 8000.0,
+        scale: 2400.0,
         seed: 1
       };
 

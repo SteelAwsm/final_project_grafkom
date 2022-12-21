@@ -1,5 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.112.1/build/three.module.js';
 import {GUI} from 'https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/libs/dat.gui.module.js';
+import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.112.1/examples/jsm/loaders/GLTFLoader.js';
 import {controls} from './controls.js';
 import {game} from './game.js';
 import {sky} from './sky.js';
@@ -8,6 +9,8 @@ import {textures} from './textures.js';
 
 
 let _APP = null;
+
+
 
 
 
@@ -51,19 +54,48 @@ class ProceduralTerrain_Demo extends game.Game {
     //   guiParams: this._guiParams,
     // });
 
+    this._focusMeshtexture = new THREE.TextureLoader().load("resources/2k_ceres_fictional.jpg");
     this._focusMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(25, 32, 32),
+      new THREE.SphereGeometry(200, 32, 32),
       new THREE.MeshBasicMaterial({
-          color: 0xFFFFFF
+          color: 0xFFFFFF,
+          map: this._focusMeshtexture,
       }));
+    
     this._focusMesh.castShadow = true;
     this._focusMesh.receiveShadow = true;
-    //this._graphics.Scene.add(this._focusMesh);
+    this._graphics.Scene.add(this._focusMesh);
+
+
+    //ring planet
+    this._ringGeo = new THREE.RingGeometry (6500, 11500, 64);
+    this._ringTexture = new THREE.TextureLoader().load("resources/ring4.png");
+	  this._ringMaterial = new THREE.MeshBasicMaterial({
+		map: this._ringTexture,
+		side: THREE.DoubleSide,
+		transparent: true
+	  });
+    this._ring = new THREE.Mesh(this._ringGeo,this._ringMaterial);
+	  this._ring.rotation.x = Math.PI/2;
+	  //this._ring.rotation.x = (90 - 26.73) * Math.PI / 180;
+	  this._ring.castShadow = true;
+	  this._ring.receiveShadow = true;
+    this._graphics.Scene.add(this._ring);
+
+
+    this._loader = new GLTFLoader();
+    this._loader.crossOrigin = "anonymous";
+    this._loader.load('3dmodel/cargoship.gltf', function ( gltf ) 
+    {
+      console.log(result);
+    });
 
     this._totalTime = 0;
 
     this._LoadBackground();
   }
+
+  
 
   _CreateGUI() {
     this._guiParams = {
@@ -80,24 +112,33 @@ class ProceduralTerrain_Demo extends game.Game {
     this._graphics.Scene.background = new THREE.Color(0x000000);
     const loader = new THREE.CubeTextureLoader();
     const texture = loader.load([
-        './resources/space-posx.jpg',
-        './resources/space-negx.jpg',
-        './resources/space-posy.jpg',
-        './resources/space-negy.jpg',
-        './resources/space-posz.jpg',
-        './resources/space-negz.jpg',
+        './resources/space-posx1.jpg',
+        './resources/space-negx1.jpg',
+        './resources/space-posy1.jpg',
+        './resources/space-negy1.jpg',
+        './resources/space-posz1.jpg',
+        './resources/space-negz1.jpg',
     ]);
     this._graphics._scene.background = texture;
   }
 
+  //pergerakan & rotasi dari objek
   _OnStep(timeInSeconds) {
+    let index = 0;
+    let indexfocusmesh = 0;
     this._totalTime += timeInSeconds;
-
-    const x = Math.cos(this._totalTime * 0.025) * 4100;
-    const y = Math.sin(this._totalTime * 0.025) * 4100;
-    this._userCamera.position.set(x, 0, y);
-
+    const x = Math.cos(this._totalTime * 0.025) * 12300;
+    const y = Math.sin(this._totalTime * 0.025) * 12300;
+    const z = Math.sin(this._totalTime * 0.025) * 9000;
+    
+    this._userCamera.position.set(x, z, y);
+    index += 0.05;
+    indexfocusmesh -= 0.1
     this._focusMesh.position.copy(this._userCamera.position);
+    this._ring.rotation.z += index*0.05
+    this._ring.rotation.y = 50
+    this._focusMesh.rotation.y += indexfocusmesh*0.05
+    this._focusMesh.rotation.z = 50
   }
 }
 

@@ -45,7 +45,7 @@ export const controls = (function() {
       this._standing = true;
       this._velocity = new THREE.Vector3(0, 0, 0);
       this._decceleration = new THREE.Vector3(-10, -10, -10);
-      this._acceleration = new THREE.Vector3(4000, 4000, 4000);
+      this._acceleration = new THREE.Vector3(9000, 9000, 9000);
 
       this._SetupPointerLock();
 
