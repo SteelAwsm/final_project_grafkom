@@ -2,8 +2,8 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.112.1/build/three.m
 
 
 export const quadtree = (function() {
-
-  class CubeQuadTree {
+  //memanage 6 sisi dari kubus
+  class CubeQuadTree { 
     constructor(params) {
       this._params = params;
       this._sides = [];
@@ -135,7 +135,7 @@ export const quadtree = (function() {
         }
       }
     }
-
+     //jika kamera terlalu dekat dengan node, maka terrain dibelah menjadi 4 
     _DistanceToChild(child, pos) {
       return child.sphereCenter.distanceTo(pos);
     }

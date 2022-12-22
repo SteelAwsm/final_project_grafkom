@@ -61,7 +61,7 @@ export const controls = (function() {
 
     _InitGUI() {
       this._params.guiParams.camera = {
-        acceleration_x: 4000,
+        acceleration_x: 25000,
       };
 
       const rollup = this._params.gui.addFolder('Camera.FPS');

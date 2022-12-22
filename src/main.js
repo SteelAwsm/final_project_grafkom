@@ -53,7 +53,7 @@ class ProceduralTerrain_Demo extends game.Game {
     //   gui: this._gui,
     //   guiParams: this._guiParams,
     // });
-
+    // bulan 1
     this._focusMeshtexture = new THREE.TextureLoader().load("resources/2k_ceres_fictional.jpg");
     this._focusMesh = new THREE.Mesh(
       new THREE.SphereGeometry(200, 32, 32),
@@ -61,10 +61,22 @@ class ProceduralTerrain_Demo extends game.Game {
           color: 0xFFFFFF,
           map: this._focusMeshtexture,
       }));
-    
+    // bulan 2
     this._focusMesh.castShadow = true;
     this._focusMesh.receiveShadow = true;
     this._graphics.Scene.add(this._focusMesh);
+    
+    this._moonMeshtexture = new THREE.TextureLoader().load("resources/2k_makemake_fictional.jpg");
+    this._moonMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(400, 32, 32),
+      new THREE.MeshBasicMaterial({
+          color: 0xFFFFFF,
+          map: this._moonMeshtexture,
+      }));
+    
+    this._moonMesh.castShadow = true;
+    this._moonMesh.receiveShadow = true;
+    this._graphics.Scene.add(this._moonMesh);
 
 
     //ring planet
@@ -77,7 +89,6 @@ class ProceduralTerrain_Demo extends game.Game {
 	  });
     this._ring = new THREE.Mesh(this._ringGeo,this._ringMaterial);
 	  this._ring.rotation.x = Math.PI/2;
-	  //this._ring.rotation.x = (90 - 26.73) * Math.PI / 180;
 	  this._ring.castShadow = true;
 	  this._ring.receiveShadow = true;
     this._graphics.Scene.add(this._ring);
@@ -126,19 +137,25 @@ class ProceduralTerrain_Demo extends game.Game {
   _OnStep(timeInSeconds) {
     let index = 0;
     let indexfocusmesh = 0;
+    let indexmoonmesh = 0;
     this._totalTime += timeInSeconds;
-    const x = Math.cos(this._totalTime * 0.025) * 12300;
-    const y = Math.sin(this._totalTime * 0.025) * 12300;
-    const z = Math.sin(this._totalTime * 0.025) * 9000;
+    const x = Math.cos(this._totalTime * 0.050) * 12300;
+    const y = Math.sin(this._totalTime * 0.050) * 12300;
+    const z = Math.sin(this._totalTime * 0.050) * 9000;
+
+    const x1 = Math.cos(this._totalTime * 0.050) * 20500;
+    const y1 = Math.sin(this._totalTime * 0.050) * 20500;
+    const z1 = Math.sin(this._totalTime * 0.050) * 18000;
     
     this._userCamera.position.set(x, z, y);
+    this._moonMesh.position.set(x1, y1, z1);
     index += 0.05;
-    indexfocusmesh -= 0.1
+    indexfocusmesh -= 0.1;
+    indexmoonmesh -= 0.1;
     this._focusMesh.position.copy(this._userCamera.position);
     this._ring.rotation.z += index*0.05
-    this._ring.rotation.y = 50
     this._focusMesh.rotation.y += indexfocusmesh*0.05
-    this._focusMesh.rotation.z = 50
+    this._moonMesh.rotation.y += indexmoonmesh*0.05
   }
 }
 

@@ -39,7 +39,7 @@ export const noise = (function() {
       }
       total /= normalization;
       return Math.pow(
-          total, this._params.exponentiation) * this._params.height;
+          total, this._params.exponentiation) * this._params.height; //fungsi untuk meng-amplify hasil
     }
   }
 
